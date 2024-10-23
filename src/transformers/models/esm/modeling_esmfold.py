@@ -1953,7 +1953,8 @@ class EsmFoldingTrunk(nn.Module):
         recycle_bins = torch.zeros(*s_z.shape[:-1], device=device, dtype=torch.int64)
 
         for recycle_idx in range(no_recycles):
-            with ContextManagers([] if recycle_idx == no_recycles - 1 else [torch.no_grad()]):
+            # with ContextManagers([] if recycle_idx == no_recycles - 1 else [torch.no_grad()]):
+            with ContextManagers([] if False else [torch.no_grad()]):
                 # === Recycling ===
                 recycle_s = self.recycle_s_norm(recycle_s.detach()).to(device)
                 recycle_z = self.recycle_z_norm(recycle_z.detach()).to(device)
