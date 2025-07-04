@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
-from typing import List, Union
+from typing import Any, Union, overload
 
+from ..generation import GenerationConfig
 from ..utils import (
     add_end_docstrings,
     is_tf_available,
@@ -48,6 +48,10 @@ class ImageToTextPipeline(Pipeline):
     """
     Image To Text pipeline using a `AutoModelForVision2Seq`. This pipeline predicts a caption for a given image.
 
+    Unless the model you're using explicitly sets these generation parameters in its configuration files
+    (`generation_config.json`), the following default values will be used:
+    - max_new_tokens: 256
+
     Example:
 
     ```python
@@ -67,6 +71,12 @@ class ImageToTextPipeline(Pipeline):
     [huggingface.co/models](https://huggingface.co/models?pipeline_tag=image-to-text).
     """
 
+    _pipeline_calls_generate = True
+    # Make sure the docstring is updated when the default generation config is changed
+    _default_generation_config = GenerationConfig(
+        max_new_tokens=256,
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         requires_backends(self, "vision")
@@ -81,9 +91,6 @@ class ImageToTextPipeline(Pipeline):
         if prompt is not None:
             preprocess_params["prompt"] = prompt
         if timeout is not None:
-            warnings.warn(
-                "The `timeout` argument is deprecated and will be removed in version 5 of Transformers", FutureWarning
-            )
             preprocess_params["timeout"] = timeout
 
         if max_new_tokens is not None:
@@ -96,14 +103,26 @@ class ImageToTextPipeline(Pipeline):
                 )
             forward_params.update(generate_kwargs)
 
+        if self.assistant_model is not None:
+            forward_params["assistant_model"] = self.assistant_model
+        if self.assistant_tokenizer is not None:
+            forward_params["tokenizer"] = self.tokenizer
+            forward_params["assistant_tokenizer"] = self.assistant_tokenizer
+
         return preprocess_params, forward_params, {}
 
-    def __call__(self, inputs: Union[str, List[str], "Image.Image", List["Image.Image"]] = None, **kwargs):
+    @overload
+    def __call__(self, inputs: Union[str, "Image.Image"], **kwargs: Any) -> list[dict[str, Any]]: ...
+
+    @overload
+    def __call__(self, inputs: Union[list[str], list["Image.Image"]], **kwargs: Any) -> list[list[dict[str, Any]]]: ...
+
+    def __call__(self, inputs: Union[str, list[str], "Image.Image", list["Image.Image"]], **kwargs):
         """
         Assign labels to the image(s) passed as inputs.
 
         Args:
-            inputs (`str`, `List[str]`, `PIL.Image` or `List[PIL.Image]`):
+            inputs (`str`, `list[str]`, `PIL.Image` or `list[PIL.Image]`):
                 The pipeline handles three types of images:
 
                 - A string containing a HTTP(s) link pointing to an image
@@ -117,6 +136,10 @@ class ImageToTextPipeline(Pipeline):
 
             generate_kwargs (`Dict`, *optional*):
                 Pass it to send all of these arguments directly to `generate` allowing full control of this function.
+
+            timeout (`float`, *optional*, defaults to None):
+                The maximum time in seconds to wait for fetching images from the web. If None, no timeout is set and
+                the call may block forever.
 
         Return:
             A list or a list of list of `dict`: Each result comes as a dictionary with the following key:
@@ -134,6 +157,10 @@ class ImageToTextPipeline(Pipeline):
         image = load_image(image, timeout=timeout)
 
         if prompt is not None:
+            logger.warning_once(
+                "Passing `prompt` to the `image-to-text` pipeline is deprecated and will be removed in version 4.48"
+                " of 🤗 Transformers. Use the `image-text-to-text` pipeline instead",
+            )
             if not isinstance(prompt, str):
                 raise ValueError(
                     f"Received an invalid text input, got - {type(prompt)} - but expected a single string. "

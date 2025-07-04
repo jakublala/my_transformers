@@ -1,5 +1,4 @@
-import warnings
-from typing import List, Union
+from typing import Any, Union, overload
 
 from ..utils import (
     add_end_docstrings,
@@ -53,12 +52,20 @@ class DepthEstimationPipeline(Pipeline):
         requires_backends(self, "vision")
         self.check_model_type(MODEL_FOR_DEPTH_ESTIMATION_MAPPING_NAMES)
 
-    def __call__(self, inputs: Union[str, List[str], "Image.Image", List["Image.Image"]] = None, **kwargs):
+    @overload
+    def __call__(self, inputs: Union[str, "Image.Image"], **kwargs: Any) -> dict[str, Any]: ...
+
+    @overload
+    def __call__(self, inputs: list[Union[str, "Image.Image"]], **kwargs: Any) -> list[dict[str, Any]]: ...
+
+    def __call__(
+        self, inputs: Union[str, list[str], "Image.Image", list["Image.Image"]], **kwargs: Any
+    ) -> Union[dict[str, Any], list[dict[str, Any]]]:
         """
         Predict the depth(s) of the image(s) passed as inputs.
 
         Args:
-            inputs (`str`, `List[str]`, `PIL.Image` or `List[PIL.Image]`):
+            inputs (`str`, `list[str]`, `PIL.Image` or `list[PIL.Image]`):
                 The pipeline handles three types of images:
 
                 - A string containing a http link pointing to an image
@@ -72,6 +79,9 @@ class DepthEstimationPipeline(Pipeline):
                 A dictionary of argument names to parameter values, to control pipeline behaviour.
                 The only parameter available right now is `timeout`, which is the length of time, in seconds,
                 that the pipeline should wait before giving up on trying to download an image.
+            timeout (`float`, *optional*, defaults to None):
+                The maximum time in seconds to wait for fetching images from the web. If None, no timeout is set and
+                the call may block forever.
 
         Return:
             A dictionary or a list of dictionaries containing result. If the input is a single image, will return a
@@ -93,9 +103,6 @@ class DepthEstimationPipeline(Pipeline):
     def _sanitize_parameters(self, timeout=None, parameters=None, **kwargs):
         preprocess_params = {}
         if timeout is not None:
-            warnings.warn(
-                "The `timeout` argument is deprecated and will be removed in version 5 of Transformers", FutureWarning
-            )
             preprocess_params["timeout"] = timeout
         if isinstance(parameters, dict) and "timeout" in parameters:
             preprocess_params["timeout"] = parameters["timeout"]

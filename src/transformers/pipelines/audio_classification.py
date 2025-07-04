@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import subprocess
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 import requests
@@ -27,7 +27,7 @@ if is_torch_available():
 logger = logging.get_logger(__name__)
 
 
-def ffmpeg_read(bpayload: bytes, sampling_rate: int) -> np.array:
+def ffmpeg_read(bpayload: bytes, sampling_rate: int) -> np.ndarray:
     """
     Helper function to read an audio file through ffmpeg.
     """
@@ -91,8 +91,11 @@ class AudioClassificationPipeline(Pipeline):
     """
 
     def __init__(self, *args, **kwargs):
-        # Default, might be overriden by the model.config.
-        kwargs["top_k"] = 5
+        # Only set default top_k if explicitly provided
+        if "top_k" in kwargs and kwargs["top_k"] is None:
+            kwargs["top_k"] = None
+        elif "top_k" not in kwargs:
+            kwargs["top_k"] = 5
         super().__init__(*args, **kwargs)
 
         if self.framework != "pt":
@@ -100,11 +103,7 @@ class AudioClassificationPipeline(Pipeline):
 
         self.check_model_type(MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING_NAMES)
 
-    def __call__(
-        self,
-        inputs: Union[np.ndarray, bytes, str],
-        **kwargs,
-    ):
+    def __call__(self, inputs: Union[np.ndarray, bytes, str, dict], **kwargs: Any) -> list[dict[str, Any]]:
         """
         Classify the sequence(s) given as inputs. See the [`AutomaticSpeechRecognitionPipeline`] documentation for more
         information.
@@ -141,12 +140,16 @@ class AudioClassificationPipeline(Pipeline):
         return super().__call__(inputs, **kwargs)
 
     def _sanitize_parameters(self, top_k=None, function_to_apply=None, **kwargs):
-        # No parameters on this pipeline right now
         postprocess_params = {}
-        if top_k is not None:
+
+        # If top_k is None, use all labels
+        if top_k is None:
+            postprocess_params["top_k"] = self.model.config.num_labels
+        else:
             if top_k > self.model.config.num_labels:
                 top_k = self.model.config.num_labels
             postprocess_params["top_k"] = top_k
+
         if function_to_apply is not None:
             if function_to_apply not in ["softmax", "sigmoid", "none"]:
                 raise ValueError(
@@ -172,6 +175,7 @@ class AudioClassificationPipeline(Pipeline):
             inputs = ffmpeg_read(inputs, self.feature_extractor.sampling_rate)
 
         if isinstance(inputs, dict):
+            inputs = inputs.copy()  # So we don't mutate the original dictionary outside the pipeline
             # Accepting `"array"` which is the key defined in `datasets` for
             # better integration
             if not ("sampling_rate" in inputs and ("raw" in inputs or "array" in inputs)):
@@ -211,6 +215,8 @@ class AudioClassificationPipeline(Pipeline):
         processed = self.feature_extractor(
             inputs, sampling_rate=self.feature_extractor.sampling_rate, return_tensors="pt"
         )
+        if self.torch_dtype is not None:
+            processed = processed.to(dtype=self.torch_dtype)
         return processed
 
     def _forward(self, model_inputs):

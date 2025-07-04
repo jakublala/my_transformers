@@ -47,7 +47,7 @@ class MusicgenMelodyDecoderConfig(PretrainedConfig):
         num_attention_heads (`int`, *optional*, defaults to 16):
             Number of attention heads for each attention layer in the Transformer block.
         layerdrop (`float`, *optional*, defaults to 0.0):
-            The LayerDrop probability for the decoder. See the [LayerDrop paper](see https://arxiv.org/abs/1909.11556)
+            The LayerDrop probability for the decoder. See the [LayerDrop paper](see https://huggingface.co/papers/1909.11556)
             for more details.
         use_cache (`bool`, *optional*, defaults to `True`):
             Whether the model should return the last key/values attentions (not used by all models)
@@ -78,6 +78,7 @@ class MusicgenMelodyDecoderConfig(PretrainedConfig):
     """
 
     model_type = "musicgen_melody_decoder"
+    base_config_key = "decoder_config"
     keys_to_ignore_at_inference = ["past_key_values"]
 
     def __init__(
@@ -195,7 +196,12 @@ class MusicgenMelodyConfig(PretrainedConfig):
     ```"""
 
     model_type = "musicgen_melody"
-    is_composition = True
+    sub_configs = {
+        "text_encoder": AutoConfig,
+        "audio_encoder": AutoConfig,
+        "decoder": MusicgenMelodyDecoderConfig,
+    }
+    has_no_defaults_at_init = True
 
     def __init__(
         self,
@@ -250,3 +256,6 @@ class MusicgenMelodyConfig(PretrainedConfig):
     # This is a property because you might want to change the codec model on the fly
     def sampling_rate(self):
         return self.audio_encoder.sampling_rate
+
+
+__all__ = ["MusicgenMelodyConfig", "MusicgenMelodyDecoderConfig"]

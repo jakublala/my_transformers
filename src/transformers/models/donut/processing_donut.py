@@ -19,15 +19,19 @@ Processor class for Donut.
 import re
 import warnings
 from contextlib import contextmanager
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 from ...image_utils import ImageInput
 from ...processing_utils import ProcessingKwargs, ProcessorMixin, Unpack
 from ...tokenization_utils_base import PreTokenizedInput, TextInput
+from ...utils import logging
 
 
 class DonutProcessorKwargs(ProcessingKwargs, total=False):
     _defaults = {}
+
+
+logger = logging.get_logger(__name__)
 
 
 class DonutProcessor(ProcessorMixin):
@@ -73,7 +77,7 @@ class DonutProcessor(ProcessorMixin):
     def __call__(
         self,
         images: ImageInput = None,
-        text: Optional[Union[str, List[str], TextInput, PreTokenizedInput]] = None,
+        text: Optional[Union[str, list[str], TextInput, PreTokenizedInput]] = None,
         audio=None,
         videos=None,
         **kwargs: Unpack[DonutProcessorKwargs],
@@ -82,9 +86,8 @@ class DonutProcessor(ProcessorMixin):
         When used in normal mode, this method forwards all its arguments to AutoImageProcessor's
         [`~AutoImageProcessor.__call__`] and returns its output. If used in the context
         [`~DonutProcessor.as_target_processor`] this method forwards all its arguments to DonutTokenizer's
-        [`~DonutTokenizer.__call__`]. Please refer to the doctsring of the above two methods for more information.
+        [`~DonutTokenizer.__call__`]. Please refer to the docstring of the above two methods for more information.
         """
-        # For backward compatibility
         if self._in_target_context_manager:
             return self.current_processor(images, text, **kwargs)
 
@@ -100,6 +103,8 @@ class DonutProcessor(ProcessorMixin):
         if images is not None:
             inputs = self.image_processor(images, **output_kwargs["images_kwargs"])
         if text is not None:
+            if images is not None:
+                output_kwargs["text_kwargs"].setdefault("add_special_tokens", False)
             encodings = self.tokenizer(text, **output_kwargs["text_kwargs"])
 
         if text is None:
@@ -151,14 +156,18 @@ class DonutProcessor(ProcessorMixin):
         output = {}
 
         while tokens:
-            start_token = re.search(r"<s_(.*?)>", tokens, re.IGNORECASE)
-            if start_token is None:
+            # We want r"<s_(.*?)>" but without ReDOS risk, so do it manually in two parts
+            potential_start = re.search(r"<s_", tokens, re.IGNORECASE)
+            if potential_start is None:
                 break
-            key = start_token.group(1)
+            start_token = tokens[potential_start.start() :]
+            if ">" not in start_token:
+                break
+            start_token = start_token[: start_token.index(">") + 1]
+            key = start_token[len("<s_") : -len(">")]
             key_escaped = re.escape(key)
 
             end_token = re.search(rf"</s_{key_escaped}>", tokens, re.IGNORECASE)
-            start_token = start_token.group()
             if end_token is None:
                 tokens = tokens.replace(start_token, "")
             else:
@@ -210,3 +219,6 @@ class DonutProcessor(ProcessorMixin):
             FutureWarning,
         )
         return self.image_processor
+
+
+__all__ = ["DonutProcessor"]

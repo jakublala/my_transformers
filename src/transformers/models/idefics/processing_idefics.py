@@ -16,10 +16,11 @@
 Processor class for IDEFICS.
 """
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Optional, Union
 from urllib.parse import urlparse
 
 from ...feature_extraction_utils import BatchFeature
+from ...image_utils import ImageInput
 from ...processing_utils import (
     ImagesKwargs,
     ProcessingKwargs,
@@ -44,9 +45,9 @@ IMAGE_TOKEN = "<image>"
 
 class IdeficsImagesKwargs(ImagesKwargs, total=False):
     transform: Optional[Callable]
-    image_size: Optional[Dict[str, int]]
-    image_mean: Optional[Union[float, List[float]]]
-    image_std: Optional[Union[float, List[float]]]
+    image_size: Optional[dict[str, int]]
+    image_mean: Optional[Union[float, list[float]]]
+    image_std: Optional[Union[float, list[float]]]
 
 
 class IdeficsTextKwargs(TextKwargs, total=False):
@@ -203,11 +204,13 @@ class IdeficsProcessor(ProcessorMixin):
             An instance of [`IdeficsImageProcessor`]. The image processor is a required input.
         tokenizer (`LlamaTokenizerFast`):
             An instance of [`LlamaTokenizerFast`]. The tokenizer is a required input.
-        image_size (`int`, *optional*, defaults to 224): Image size (assuming a square image)
+        image_size (`int`, *optional*, defaults to 224):
+            Image size (assuming a square image)
+        add_end_of_utterance_token (`str`, *optional*):
+            The string representation of token representing end of utterance
     """
 
     attributes = ["image_processor", "tokenizer"]
-    valid_kwargs = ["image_size", "add_end_of_utterance_token"]
     image_processor_class = "IdeficsImageProcessor"
     tokenizer_class = "LlamaTokenizerFast"
 
@@ -219,7 +222,11 @@ class IdeficsProcessor(ProcessorMixin):
 
         super().__init__(image_processor, tokenizer)
         self.current_processor = self.image_processor
-        self.image_token_id = tokenizer.convert_tokens_to_ids(IMAGE_TOKEN)
+        self.image_token_id = (
+            tokenizer.image_token_id
+            if hasattr(tokenizer, "image_token")
+            else tokenizer.convert_tokens_to_ids(IMAGE_TOKEN)
+        )
 
         self.default_image_dims = (
             self.image_processor.image_num_channels,
@@ -236,14 +243,14 @@ class IdeficsProcessor(ProcessorMixin):
     @deprecate_kwarg(old_name="prompts", version="5.0.0", new_name="text", raise_if_both_names=True)
     def __call__(
         self,
-        images=None,
+        images: Union[ImageInput, list[ImageInput], str, list[str], list[list[str]]] = None,
         text: Union[
             TextInput,
             PreTokenizedInput,
-            List[TextInput],
-            List[PreTokenizedInput],
-            List[List[TextInput]],
-            List[List[PreTokenizedInput]],
+            list[TextInput],
+            list[PreTokenizedInput],
+            list[list[TextInput]],
+            list[list[PreTokenizedInput]],
         ] = None,
         audio=None,
         videos=None,
@@ -253,10 +260,10 @@ class IdeficsProcessor(ProcessorMixin):
         the model was trained on and prepares the image pixel values for the model to process.
 
         Args:
-            images (`Union[PIL.Image, str, List[PIL.Image], List[str]]`):
+            images (`Union[ImageInput, list[ImageInput], str, list[str], list[list[str]]]`):
                 either a single image or a batched list of images - can be passed in when text contains only text prompts,
                 in order to use the image-text-to-text behavior.
-            text (`Union[List[TextInput], [List[List[TextInput]]]]`):
+            text (`Union[list[TextInput], [list[list[TextInput]]]]`):
                 either a single prompt or a batched list of prompts - see the detailed description immediately after
                 the end of the arguments doc section.
             return_tensors (`str` or `TensorType`, *optional*, defaults to `TensorType.PYTORCH`):
@@ -310,7 +317,7 @@ class IdeficsProcessor(ProcessorMixin):
         and the two images will be massaged using [`IdeficsImageProcessor.__call__`] method and placed inside the
         `pixel_values` dict entry of the return value.
 
-        This example also examplifies that images can be passed as objects or as text urls. It can be seen that the
+        This example also exemplifies that images can be passed as objects or as text urls. It can be seen that the
         first image is passed as object and the second one as a url.
 
         To do training do:
@@ -369,7 +376,7 @@ class IdeficsProcessor(ProcessorMixin):
         add_eos_token = output_kwargs["text_kwargs"].pop("add_eos_token", False)
         add_end_of_utterance_token = output_kwargs["text_kwargs"].pop("add_end_of_utterance_token", None)
 
-        # if the value isn't overriden by the user, check if the tokenizer was trained with this token and then use it
+        # if the value isn't overridden by the user, check if the tokenizer was trained with this token and then use it
         if add_end_of_utterance_token is None:
             add_end_of_utterance_token = self.tokenizer_was_trained_with_end_of_utterance_token
         # turn non-batched prompts into batched
@@ -535,3 +542,6 @@ class IdeficsProcessor(ProcessorMixin):
         tokenizer_input_names = self.tokenizer.model_input_names
         image_processor_input_names = self.image_processor.model_input_names
         return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))
+
+
+__all__ = ["IdeficsProcessor"]

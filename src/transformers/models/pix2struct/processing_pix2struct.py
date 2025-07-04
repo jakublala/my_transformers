@@ -16,16 +16,17 @@
 Processor class for Pix2Struct.
 """
 
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 from ...feature_extraction_utils import BatchFeature
 from ...processing_utils import ImagesKwargs, ProcessingKwargs, ProcessorMixin, Unpack
 from ...tokenization_utils_base import BatchEncoding, PreTokenizedInput, TextInput
+from ...utils import logging
 
 
 class Pix2StructImagesKwargs(ImagesKwargs, total=False):
     max_patches: Optional[int]
-    header_text: Optional[Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]]]
+    header_text: Optional[Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]]]
 
 
 class Pix2StructProcessorKwargs(ProcessingKwargs, total=False):
@@ -46,6 +47,9 @@ class Pix2StructProcessorKwargs(ProcessingKwargs, total=False):
             "max_patches": 2048,
         },
     }
+
+
+logger = logging.get_logger(__name__)
 
 
 class Pix2StructProcessor(ProcessorMixin):
@@ -74,7 +78,7 @@ class Pix2StructProcessor(ProcessorMixin):
     def __call__(
         self,
         images=None,
-        text: Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]] = None,
+        text: Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]] = None,
         audio=None,
         videos=None,
         **kwargs: Unpack[Pix2StructProcessorKwargs],
@@ -93,8 +97,12 @@ class Pix2StructProcessor(ProcessorMixin):
             tokenizer_init_kwargs=self.tokenizer.init_kwargs,
             **kwargs,
         )
+        add_special_tokens = output_kwargs["text_kwargs"].pop("add_special_tokens", None)
         # Get only text
         if images is None and not self.image_processor.is_vqa:
+            output_kwargs["text_kwargs"]["add_special_tokens"] = (
+                add_special_tokens if add_special_tokens is not None else True
+            )
             self.current_processor = self.tokenizer
             text_encoding = self.tokenizer(text=text, **output_kwargs["text_kwargs"])
             return text_encoding
@@ -108,6 +116,9 @@ class Pix2StructProcessor(ProcessorMixin):
             encoding_image_processor = self.image_processor(images, **output_kwargs["images_kwargs"])
 
         if text is not None and not self.image_processor.is_vqa:
+            output_kwargs["text_kwargs"]["add_special_tokens"] = (
+                add_special_tokens if add_special_tokens is not None else False
+            )
             text_encoding = self.tokenizer(text=text, **output_kwargs["text_kwargs"])
 
             if "attention_mask" in text_encoding:
@@ -141,3 +152,6 @@ class Pix2StructProcessor(ProcessorMixin):
         tokenizer_input_names = self.tokenizer.model_input_names
         image_processor_input_names = self.image_processor.model_input_names
         return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))
+
+
+__all__ = ["Pix2StructProcessor"]

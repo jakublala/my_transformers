@@ -17,17 +17,12 @@ Processor class for InstructBLIP. Largely copy of Blip2Processor with addition o
 """
 
 import os
-from typing import List, Union
+from typing import Union
 
 from ...image_processing_utils import BatchFeature
 from ...image_utils import ImageInput
 from ...processing_utils import ProcessingKwargs, ProcessorMixin, Unpack
-from ...tokenization_utils_base import (
-    AddedToken,
-    BatchEncoding,
-    PreTokenizedInput,
-    TextInput,
-)
+from ...tokenization_utils_base import AddedToken, BatchEncoding, PreTokenizedInput, TextInput
 from ...utils import logging
 from ..auto import AutoTokenizer
 
@@ -72,21 +67,23 @@ class InstructBlipProcessor(ProcessorMixin):
     """
 
     attributes = ["image_processor", "tokenizer", "qformer_tokenizer"]
-    valid_kwargs = ["num_query_tokens"]
-    image_processor_class = "BlipImageProcessor"
+    image_processor_class = ("BlipImageProcessor", "BlipImageProcessorFast")
     tokenizer_class = "AutoTokenizer"
     qformer_tokenizer_class = "AutoTokenizer"
 
     def __init__(self, image_processor, tokenizer, qformer_tokenizer, num_query_tokens=None, **kwargs):
-        self.image_token = AddedToken("<image>", normalized=False, special=True)
-        tokenizer.add_tokens([self.image_token], special_tokens=True)
+        if not hasattr(tokenizer, "image_token"):
+            self.image_token = AddedToken("<image>", normalized=False, special=True)
+            tokenizer.add_tokens([self.image_token], special_tokens=True)
+        else:
+            self.image_token = tokenizer.image_token
         self.num_query_tokens = num_query_tokens
         super().__init__(image_processor, tokenizer, qformer_tokenizer)
 
     def __call__(
         self,
         images: ImageInput = None,
-        text: Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]] = None,
+        text: Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]] = None,
         audio=None,
         videos=None,
         **kwargs: Unpack[InstructBlipProcessorKwargs],
@@ -100,7 +97,7 @@ class InstructBlipProcessor(ProcessorMixin):
             images (`ImageInput`):
                 The image or batch of images to be prepared. Each image can be a PIL image, NumPy array or PyTorch
                 tensor. Both channels-first and channels-last formats are supported.
-            text (`TextInput`, `PreTokenizedInput`, `List[TextInput]`, `List[PreTokenizedInput]`):
+            text (`TextInput`, `PreTokenizedInput`, `list[TextInput]`, `list[PreTokenizedInput]`):
                 The sequence or batch of sequences to be encoded. Each sequence can be a string or a list of strings
                 (pretokenized string). If the sequences are provided as list of strings (pretokenized), you must set
                 `is_split_into_words=True` (to lift the ambiguity with a batch of sequences).
@@ -145,7 +142,7 @@ class InstructBlipProcessor(ProcessorMixin):
                     logger.warning_once(
                         "Expanding inputs for image tokens in InstructBLIP should be done in processing. "
                         "Please follow instruction here (https://gist.github.com/zucchini-nlp/e9f20b054fa322f84ac9311d9ab67042) to update your InstructBLIP model. "
-                        "Using processors without these attributes in the config is deprecated and will throw an error in v4.47."
+                        "Using processors without these attributes in the config is deprecated and will throw an error in v4.50."
                     )
 
             # cast to desired return tensors type after concatenating
@@ -215,3 +212,6 @@ class InstructBlipProcessor(ProcessorMixin):
         qformer_tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path, subfolder="qformer_tokenizer")
         processor.qformer_tokenizer = qformer_tokenizer
         return processor
+
+
+__all__ = ["InstructBlipProcessor"]

@@ -39,20 +39,26 @@ import os
 import subprocess
 
 result = subprocess.run(
-    ["python3", "-m", "pytest", "-v", f"{target_test}"],
+    ["python3", "-m", "pytest", "-v", "-rfEp", f"{target_test}"],
     capture_output = True,
     text=True,
 )
 print(result.stdout)
 
-if len(result.stderr) > 0:
-    if "ERROR: not found: " in result.stderr:
+if f"PASSED {target_test}" in result.stdout:
+    print("test passed")
+    exit(0)
+elif len(result.stderr) > 0:
+    if "ERROR: file or directory not found: " in result.stderr:
+        print("test file or directory not found in this commit")
+        exit(0)
+    elif "ERROR: not found: " in result.stderr:
         print("test not found in this commit")
         exit(0)
     else:
         print(f"pytest failed to run: {{result.stderr}}")
         exit(-1)
-elif f"{target_test} FAILED" in result.stdout:
+elif f"FAILED {target_test}" in result.stdout:
     print("test failed")
     exit(2)
 
@@ -74,6 +80,9 @@ def find_bad_commit(target_test, start_commit, end_commit):
     Returns:
         `str`: The earliest commit at which `target_test` fails.
     """
+
+    if start_commit == end_commit:
+        return start_commit
 
     create_script(target_test=target_test)
 
@@ -138,7 +147,8 @@ def get_commit_info(commit):
         url = f"https://api.github.com/repos/huggingface/transformers/pulls/{pr_number}"
         pr_for_commit = requests.get(url).json()
         author = pr_for_commit["user"]["login"]
-        merged_author = pr_for_commit["merged_by"]["login"]
+        if pr_for_commit["merged_by"] is not None:
+            merged_author = pr_for_commit["merged_by"]["login"]
 
     if author is None:
         url = f"https://api.github.com/repos/huggingface/transformers/commits/{commit}"
@@ -182,7 +192,15 @@ if __name__ == "__main__":
                 info = {"test": test, "commit": commit}
                 info.update(get_commit_info(commit))
                 failed_tests_with_bad_commits.append(info)
-            reports[model]["single-gpu"] = failed_tests_with_bad_commits
+
+            # If no single-gpu test failures, remove the key
+            if len(failed_tests_with_bad_commits) > 0:
+                reports[model]["single-gpu"] = failed_tests_with_bad_commits
+            else:
+                reports[model].pop("single-gpu", None)
+
+        # remove the models without any test failure
+        reports = {k: v for k, v in reports.items() if len(v) > 0}
 
         with open(args.output_file, "w", encoding="UTF-8") as fp:
             json.dump(reports, fp, ensure_ascii=False, indent=4)
